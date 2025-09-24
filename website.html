@@ -534,21 +534,31 @@ function saveSettings(s){ localStorage.setItem(SETKEY, JSON.stringify(s)); }
 
 /* =============== Simple template engine =============== */
 function renderTemplate(tpl, ctx){
+  // Fix for handling new "detect types" for {{ var type }}
+
+  // Handle {% if %} ... {% endif %}
   tpl = tpl.replace(/\{%\s*if\s+([\w\.]+)\s*%\}([\s\S]*?)\{%\s*endif\s*%\}/g, (_, v, body)=>{
     const val = resolvePath(ctx, v);
     return truthy(val) ? body : '';
   });
-  tpl = tpl.replace(/\{\{\s*([\w\.]+)\s*\}\}/g, (_, v)=>{
+
+  // Handle {{ var }} or {{ var type }}
+  tpl = tpl.replace(/\{\{\s*([\w\.]+)(?:\s+[\w\.:\[\],]+)?\s*\}\}/g, (_, v)=>{
     const val = resolvePath(ctx, v);
-    if (Array.isArray(val)) return JSON.stringify(val);
+    if (Array.isArray(val)) return JSON.stringify(val);   // e.g. ["1.2.3.4","5.6.7.8"]
     return val===undefined || val===null ? '' : String(val);
   });
+
   return tpl;
 }
+
+
 function resolvePath(obj, path){
   return path.split('.').reduce((o,k)=> (o && k in o)? o[k] : undefined, obj);
 }
+
 function truthy(v){ return !(v===undefined || v===null || v==='' || v===0 || v===false); }
+
 function scanVars(tpl){
   const a = [];
   const lines = tpl.split(/\r?\n/);
@@ -559,7 +569,7 @@ function scanVars(tpl){
     if(trimmed.startsWith("//")) return;
 
     // Find {{ var type? }} in this line
-    let m, re = /\{\{\s*([\w\.]+)(?:\s+(\w+))?\s*\}\}/g;
+    let m, re = /\{\{\s*([\w\.]+)(?:\s+([\w\.:\[\],]+))?\s*\}\}/g;
     while((m = re.exec(line))){
       a.push({ name: m[1], type: m[2] || "string" });
     }
@@ -575,6 +585,7 @@ function scanVars(tpl){
 }
 
 
+
 /* =============== KQL syntax highlighting (very light) =============== */
 function kqlHighlight(text){
   const esc = text.replace(/[&<>]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));
@@ -582,7 +593,7 @@ function kqlHighlight(text){
     .replace(/(\/\/[^\n]*)/g, '<span class="com">$1</span>')
     .replace(/\b(let|where|summarize|order|by|asc|desc|in|between|datetime|dynamic|project|extend|top|take|join|on|contains|startswith|endswith|has|bin)\b/g, '<span class="kw">$1</span>')
     .replace(/'[^']*'/g, '<span class="str">$&</span>')
-    .replace(/\{\{\s*[\w\.]+\s*\}\}/g, '<span class="var">$&</span>');
+    .replace(/\{\{\s*[\w\.]+(?:\s+[\w\.:\[\],]+)?\s*\}\}/g, '<span class="var">$&</span>');
 }
 
 /* =============== AES-256-CBC & PBKDF2 (WebCrypto) =============== */
@@ -737,22 +748,82 @@ function refreshList(){
     list.appendChild(d);
   });
 }
+
 function selectItem(id){
   const it = state.items.find(x=>x.id===id); if(!it) return;
   state.currentId = id;
   $('#qName').value = it.name || '';
   $('#qDesc').value = it.description || '';
   $('#qTags').value = it.tags || '';
-  state.currentSchema = JSON.parse(JSON.stringify(it.schema||{}));
+
+  const tpl = it.template || '';
+  state.currentSchema = normalizeSchema(JSON.parse(JSON.stringify(it.schema||{})), tpl);
+
   buildParams(state.currentSchema);
-  $('#editor').value = it.template || '';
+  $('#editor').value = tpl;
   updateRendered();
   refreshList();
   toast(`Loaded '${it.name}'`);
 }
+
+
+function normalizeSchema(schema, tplText){
+  if (tplText) {
+    const vars = scanVars(tplText);
+    vars.forEach(v=>{
+      if(!(v.name in schema)){
+        let meta = { type: v.type || "string", default: "" };
+        if(v.type === "integer") meta.default = 0;
+        else if(v.type === "datetime") meta.default = new Date().toISOString();
+        else if(v.type === "array.string") meta.default = [];
+        else if(v.type === "string.nullable") meta.default = null;
+        else if(v.type && v.type.startsWith("enum:[")){
+          const opts = v.type.slice(5,-1).split(",").map(s=>s.trim()).filter(Boolean);
+          meta = { type: "enum", enum: opts, default: opts[0] || "" };
+        }
+        schema[v.name] = meta;
+      }
+    });
+  }
+
+  Object.entries(schema).forEach(([k, meta])=>{
+    if(!meta || typeof meta !== "object") schema[k] = meta = { type:"string", default:String(meta ?? "") };
+
+    const t = meta.type || "string";
+
+    if(t === "array.string"){
+      if(Array.isArray(meta.default)) {
+      } else if(typeof meta.default === "string") {
+        const parts = meta.default.split(",").map(s=>s.trim()).filter(Boolean);
+        meta.default = parts;
+      } else if(meta.default == null) {
+        meta.default = [];
+      }
+    } else if(t === "string.nullable"){
+      if(meta.default === undefined) meta.default = null;
+      if(meta.default !== null && typeof meta.default !== "string"){
+        meta.default = String(meta.default);
+      }
+    } else if(t === "integer"){
+      if(typeof meta.default !== "number") meta.default = Number(meta.default||0);
+    } else if(t === "datetime"){
+      if(!meta.default) meta.default = new Date().toISOString();
+    } else if(t && t.startsWith("enum:[")){
+      const opts = t.slice(5,-1).split(",").map(s=>s.trim()).filter(Boolean);
+      meta.type = "enum";
+      meta.enum = opts;
+      if(!("default" in meta)) meta.default = opts[0] || "";
+    }
+  });
+
+  return schema;
+}
+
+
 function buildParams(schema){
+  state.currentSchema = normalizeSchema(schema, $('#editor').value);
   const wrap = $('#params'); wrap.innerHTML = '';
-  const entries = Object.entries(schema||{});
+  const entries = Object.entries(state.currentSchema||{});
   entries.forEach(([key, meta])=>{
     const row = document.createElement('div'); row.className='param-row';
     const lbl = document.createElement('label'); lbl.textContent = key;
@@ -761,6 +832,8 @@ function buildParams(schema){
     wrap.appendChild(row);
   });
 }
+
+
 function makeInput(key, meta){
   const t = (meta && typeof meta==='object') ? (meta.type||'string') : 'string';
   const def = (meta && typeof meta==='object') ? meta.default : meta;
@@ -821,6 +894,7 @@ function paramContext(){
   });
   return ctx;
 }
+
 function ensureSchemaCoversTemplate(){
   const tpl = $('#editor').value;
   const vars = scanVars(tpl);
@@ -828,13 +902,24 @@ function ensureSchemaCoversTemplate(){
   if(!missing.length) return false;
 
   const existing = paramContext();
+
   missing.forEach(v=>{
-    state.currentSchema[v.name] = { type: v.type, default: (v.type==="integer"?0:"") };
+    let meta = { type: v.type || "string", default: "" };
+    if(v.type === "integer") meta.default = 0;
+    else if(v.type === "datetime") meta.default = new Date().toISOString();
+    else if(v.type === "array.string") meta.default = [];
+    else if(v.type === "string.nullable") meta.default = null;
+    else if(v.type && v.type.startsWith("enum:[")){
+      const opts = v.type.slice(5,-1).split(",").map(s=>s.trim()).filter(Boolean);
+      meta = { type: "enum", enum: opts, default: opts[0] || "" };
+    }
+    state.currentSchema[v.name] = meta;
   });
+
+  state.currentSchema = normalizeSchema(state.currentSchema, tpl);
 
   buildParams(state.currentSchema);
 
-  // restore old values if possible
   Object.entries(existing).forEach(([k,val])=>{
     const row = [...$('#params').querySelectorAll('.param-row')]
       .find(r=>r.querySelector('label').textContent===k);
@@ -849,9 +934,13 @@ function ensureSchemaCoversTemplate(){
       else input.value = (val==null?'': (Array.isArray(val)? val.join(','): String(val)));
     }
   });
+
   toast(`Auto-added params: ${missing.map(v=>`${v.name}:${v.type}`).join(', ')}`);
   return true;
 }
+
+
+
 function updateRendered(){
   const ctx = paramContext();
   try{
@@ -880,19 +969,23 @@ $('#suggestSchema').onclick = ()=>{
   const vars = scanVars(tpl);
   if(!vars.length){ toast('No {{ variables }} found'); return; }
 
-  const suggested = {};
+  const updated = { ...state.currentSchema };
+
   vars.forEach(v=>{
-    suggested[v.name] = {
-      type: v.type || "string",
-      default: v.type === "integer" ? 0 : ""
-    };
+    if(!(v.name in updated)){
+      updated[v.name] = {
+        type: v.type || "string",
+        default: v.type === "integer" ? 0 : ""
+      };
+    }
   });
 
-  state.currentSchema = suggested;
+  state.currentSchema = updated;
   buildParams(state.currentSchema);
   updateRendered();
-  toast(`Suggested schema for: ${vars.map(v=>`${v.name}:${v.type}`).join(', ')}`);
+  toast(`Ensured schema for: ${vars.map(v=>`${v.name}:${v.type}`).join(', ')}`);
 };
+
 
 
 $('#copyRendered').onclick = async ()=>{
