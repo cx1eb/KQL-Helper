@@ -1,0 +1,15 @@
+// Demo of type-hints inside {{ }}
+let StartTime = datetime({{ start_date datetime }});
+let EndTime   = datetime({{ end_date datetime }});
+
+let TargetIPs = dynamic({{ ip_list array.string }});
+let Limit     = {{ limit integer }};
+
+{{ table_name identifier }}
+| where TimeGenerated between (StartTime .. EndTime)
+| where IPAddress in (TargetIPs)
+{% if username %}
+| where UserPrincipalName == '{{ username string.nullable }}'
+{% endif %}
+| summarize Count = count() by IPAddress, bin(TimeGenerated, {{ bin_minutes integer }}m)
+| order by Count desc
