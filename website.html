@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+<title>KQL Configurator (Web)</title>
+<style>
+  :root{
+    --bg:#14131a;
+    --panel:#181722;
+    --panel2:#1b1a22;
+    --ink:#eaeaf0;
+    --muted:#b7b6c2;
+    --line:#2b2935;
+    --field:#16151c;
+    --accent1:#ff2ea6;
+    --accent2:#a36cff;
+  }
+  *{
+    box-sizing:border-box
+  }
+  html,body{
+    height:100%
+  }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font:14px/1.35 system-ui,Segoe UI,Roboto,Arial;
+    display:flex;
+    min-height:100vh;
+  }
+  .app{
+    display:flex;
+    gap:16px;
+    padding:16px;
+    width:100%
+  }
+  .col{
+    display:flex;
+    flex-direction:column;
+    gap:12px
+  }
+  .left{
+    width:320px
+  }
+  .right{
+    flex:1;
+    min-width:0
+  }
+  .card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:12px;
+  }
+  .row{
+    display:flex;
+    gap:8px;
+    align-items:center
+  }
+  .grow{
+    flex:1
+  }
+  h3{
+    margin:0 0 8px 0;
+    font-size:15px
+  }
+  input[type="text"], input[type="number"], textarea, select{
+    background:var(--field);
+    color:#f5f5f5;
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:8px;
+    width:100%;
+    outline:none;
+  }
+  textarea{
+    resize:vertical;
+    min-height:140px;
+    font-family:Consolas, ui-monospace, monospace
+  }
+  .btn{
+    background: linear-gradient(90deg, var(--accent1), var(--accent2));
+    color:#fff;
+    border:none;
+    padding:10px 12px;
+    border-radius:10px;
+    font-weight:700;
+    cursor:pointer;
+  }
+  .btn:active{
+    opacity:.9
+  }
+  .list{
+    background:var(--panel2);
+    border:1px solid var(--line);
+    border-radius:10px;
+    overflow:auto;
+    min-height:360px;
+  }
+  .item{
+    padding:10px 12px;
+    border-bottom:1px solid #242230;
+    cursor:pointer
+  }
+  .item:hover{
+    background:#222030
+  }
+  .item.active{
+    background:#26243a
+  }
+  .muted{
+    color:var(--muted)
+  }
+  .pill{
+    display:inline-block;
+    padding:2px 8px;
+    background:#222030;
+    border:1px solid #2c2a38;
+    border-radius:999px;
+    font-size:12px
+  }
+  .grid{
+    display:grid;
+    grid-template-columns:110px 1fr 110px 1fr 70px 1fr;
+    gap:8px;
+    align-items:center
+  }
+  .tabs{
+    display:flex;
+    gap:8px;
+    margin-bottom:8px
+  }
+  .tab{
+    padding:8px 10px;
+    border-radius:8px;
+    background:#1b1a22;
+    cursor:pointer
+  }
+  .tab.active{
+    background:#222030
+  }
+  .mono{
+    font-family:Consolas, ui-monospace, monospace;
+    white-space:pre;
+    overflow:auto;
+    min-height:160px;
+    border-radius:8px;
+    padding:8px;
+    background:#171620;
+    border:1px solid var(--line)
+  }
+  .params{
+    max-height:340px;
+    overflow:auto;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:#171620;
+    padding:8px
+  }
+  .param-row{
+    display:grid;
+    grid-template-columns:180px 1fr;
+    gap:8px;
+    align-items:center;
+    margin-bottom:8px
+  }
+  .status{
+    position:fixed;
+    left:16px;
+    bottom:16px;
+    background:#1b1a22;
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:8px 10px;
+    opacity:0;
+    transition:opacity .2s
+  }
+  .status.show{
+    opacity:1
+  }
+  .kql span.kw{
+    color:#ff7fcc;
+    font-weight:700
+  }
+  .kql span.str{
+    color:#b49cff
+  }
+  .kql span.com{
+    color:#6d6a7f
+  }
+  .kql span.var{
+    color:#ff9bd1
+  }
+  .subtle{
+    font-size:12px;
+    color:#9b9aa8
+  }
+  .danger{
+    color:#ff6b6b
+  }
+  /* Topbar + modal */
+  #topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 38px;
+    background: #181722;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    z-index: 100;
+    border-bottom: 1px solid var(--line);
+    padding: 0 16px;
+    font-size: 16px;
+  }
+  .topbar-left {
+    flex: 1;
+    font-weight: bold;
+  }
+  .topbar-menu {
+    position: relative;
+  }
+  #menuBtn {
+    background: none;
+    color: #fff;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: 6px;
+  }
+  #menuBtn:focus {
+    outline: 2px solid var(--accent2);
+  }
+  .dropdown {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 32px;
+    background: #222030;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    min-width: 140px;
+    box-shadow: 0 2px 8px #0004;
+    z-index: 200;
+  }
+  .dropdown-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    color: #fff;
+  }
+  .dropdown-item:hover {
+    background: #26243a;
+  }
+  .modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(20,19,26,0.45);
+    backdrop-filter: blur(4px);
+    justify-content: center;
+    align-items: center;
+  }
+  .modal-content {
+    padding: 28px 28px 32px;
+    max-width: 640px;
+  }
+  .modal .section {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-top: 18px;
+    background: #171620;
+  }
+  .modal .section h4 {
+    font-size: 16px;
+    margin-bottom: 12px;
+  }
+  .modal .row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-top: 10px;
+  }
+  .modal label {
+    width: 180px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .modal input[type="text"],.modal select {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+  .modal .btn {
+    padding: 12px 14px;
+    font-size: 14px;
+    border-radius: 12px;
+  }
+  .section + .section {
+    margin-top: 24px;
+  }
+  .close {
+    position: absolute;
+    right: 14px;
+    top: 8px;
+    font-size: 22px;
+    color: #aaa;
+    cursor: pointer;
+  }
+  .close:hover {
+    color: #fff;
+  }
+  body.modal-open > .app, body.modal-open > #status {
+    filter: blur(3px) brightness(0.9);
+    pointer-events: none;
+    user-select: none;
+  }
+  input[type="date"],input[type="datetime-local"],input[type="time"] {
+    background: var(--field);
+    color: #f5f5f5;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px;
+    width: 100%;
+    font-family: system-ui, Segoe UI, Roboto, Arial;
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="date"]::-webkit-datetime-edit,input[type="datetime-local"]::-webkit-datetime-edit,input[type="time"]::-webkit-datetime-edit {
+    color: #f5f5f5;
+    padding: 0 2px;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator,input[type="datetime-local"]::-webkit-calendar-picker-indicator,input[type="time"]::-webkit-calendar-picker-indicator {
+    background: linear-gradient(90deg, var(--accent1), var(--accent2));
+    border-radius: 6px;
+    padding: 4px;
+    cursor: pointer;
+    filter: invert(1) hue-rotate(180deg);
+  }
+  input[type="date"]:focus,input[type="datetime-local"]:focus,input[type="time"]:focus {
+    border-color: var(--accent2);
+    box-shadow: 0 0 0 2px rgba(163,108,255,0.3);
+  }
+</style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div id="topbar">
+  <div class="topbar-left">KQL Configurator</div>
+  <div class="topbar-menu">
+    <button id="menuBtn">☰ Menu</button>
+    <div id="dropdown" class="dropdown">
+      <div id="openSettings" class="dropdown-item">Settings</div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div id="settingsModal" class="modal" aria-hidden="true">
+  <div class="modal-content" role="dialog" aria-modal="true" aria-label="Settings">
+    <span id="closeModal" class="close" title="Close">&times;</span>
+    <h3 style="margin:0 0 6px 0;">Settings</h3>
+    <div class="subtle">These are saved in your browser (localStorage). Leave passphrase/IV/Salt blank to be prompted on export/import.</div>
+
+    <div class="section">
+      <h4 style="margin:0 0 8px 0;">Encryption</h4>
+      <div class="row">
+        <label style="width:160px;">Type</label>
+        <select id="encType" class="grow">
+          <option>AES-256-CBC</option>
+          <option>XTEA-CBC</option>
+        </select>
+      </div>
+      <div class="row" style="margin-top:6px;">
+        <label style="width:160px;">Passphrase</label>
+        <input id="passphrase" type="text" placeholder="Passphrase (optional to save)" class="grow"/>
+      </div>
+      <div class="row" style="margin-top:6px;">
+        <label style="width:160px;">Salt (base64)</label>
+        <input id="saltB64" type="text" placeholder="Salt (base64, optional)" class="grow"/>
+      </div>
+      <div class="row" style="margin-top:6px;">
+        <label style="width:160px;">IV</label>
+        <input id="ivB64" type="text" placeholder="IV (base64, 16B AES / 8B XTEA)" class="grow"/>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button id="saveSettings" class="btn grow">Save Settings</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h4 style="margin:0 0 8px 0;">RSA Keys</h4>
+      <div class="row">
+        <button id="genRSA" class="btn grow">Generate RSA 4096-bit</button>
+      </div>
+      <div class="row">
+        <button id="exportPub" class="btn grow">Export Public Key</button>
+        <button id="exportPriv" class="btn grow">Export Private Key</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="app" style="margin-top:38px;">
+  <!-- LEFT: Library -->
+  <div class="col left">
+    <div class="card">
+      <h3>Queries</h3>
+      <input id="search" type="text" placeholder="Search by name/tag..." />
+    </div>
+    <div id="list" class="list"></div>
+    <div class="row">
+      <button id="newBtn" class="btn grow">New</button>
+      <button id="delBtn" class="btn" title="Delete">Delete</button>
+    </div>
+  </div>
+
+  <!-- RIGHT: Editor -->
+  <div class="col right">
+    <div class="card">
+      <h3>Meta</h3>
+      <div class="grid">
+        <label>Name</label><input id="qName" type="text" placeholder="Query name…"/>
+        <label>Desc</label><input id="qDesc" type="text" placeholder="Description (optional)"/>
+        <label>Tags</label><input id="qTags" type="text" placeholder="Tags (comma separated)"/>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Editable Parameters</h3>
+      <div id="params" class="params"></div>
+      <div class="row subtle" style="margin-top:6px;">
+        Tip: schema supports <code>string</code>, <code>string.nullable</code>, <code>integer</code>, <code>datetime</code>, <code>identifier</code>, <code>array.string</code>, or <code>enum:[]</code>.
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>KQL</h3>
+      <div class="tabs">
+        <div data-tab="template" class="tab active">Template</div>
+        <div data-tab="rendered" class="tab">Rendered</div>
+      </div>
+      <div data-pane="template">
+        <textarea id="editor" spellcheck="false"></textarea>
+        <div class="row" style="margin-top:8px;">
+          <button id="suggestSchema" class="btn">Suggest schema from template ★</button>
+          <span class="muted">Auto-adds missing <code>{{ vars }}</code> &amp; <code>{% if var %}</code> to schema</span>
+        </div>
+      </div>
+      <div data-pane="rendered" style="display:none">
+        <pre id="rendered" class="mono kql"></pre>
+      </div>
+    </div>
+
+    <div class="row">
+      <button id="copyRendered" class="btn">Copy Rendered</button>
+      <button id="saveQuery" class="btn">Save / Update</button>
+      <button id="exportBtn" class="btn">Export</button>
+      <button id="importBtn" class="btn">Import</button>
+      <input id="fileIn" type="file" accept=".json,.txt,.kql" style="display:none" />
+      <button id="loadSchemaTpl" class="btn">Load schema + template</button>
+      <input id="schemaIn" type="file" accept=".json" style="display:none" />
+      <input id="tplIn" type="file" accept=".kql,.txt" style="display:none" />
+    </div>
+  </div>
+</div>
+
+<div id="status" class="status"></div>
+
+<script>
+/* =============== Utilities =============== */
+const $ = (sel, el=document)=>el.querySelector(sel);
+const $$ = (sel, el=document)=>Array.from(el.querySelectorAll(sel));
+const toast = (msg, ms=1600)=>{
+  const el = $('#status'); el.textContent = msg; el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'), ms);
+};
+const encText = (u8)=>new TextEncoder().encode(u8);
+const decText = (u8)=>new TextDecoder().decode(u8);
+const b64e = (buf)=> btoa(String.fromCharCode(...new Uint8Array(buf)));
+const b64d = (str)=> Uint8Array.from(atob(str), c=>c.charCodeAt(0));
+const nowTs = ()=>Math.floor(Date.now()/1000);
+
+const DEFAULT_SCHEMA = {
+  "time_start": {"type":"datetime","default":"2025-01-01T00:00:00Z","description":"Start of time window"},
+  "time_end": {"type":"datetime","default":"2025-12-31T23:59:59Z","description":"End of time window"},
+  "table_name": {"type":"identifier","default":"SigninLogs"},
+  "ip_list": {"type":"array.string","default":["1.2.3.4","5.6.7.8"]},
+  "username": {"type":"string.nullable","default":null},
+  "bin_minutes": {"type":"integer","default":15,"min":1,"max":240}
+};
+const DEFAULT_TEMPLATE = `// Example KQL with Jinja2 placeholders
+let StartTime = datetime({{ time_start }});
+let EndTime   = datetime({{ time_end }});
+let TargetIPs = dynamic({{ ip_list }});
+{{ table_name }}
+| where TimeGenerated between (StartTime .. EndTime)
+| where IPAddress in (TargetIPs)
+{% if username %}
+| where UserPrincipalName == '{{ username }}'
+{% endif %}
+| summarize count() by IPAddress, bin(TimeGenerated, {{ bin_minutes }}m)
+| order by count_ desc
+`;
+
+/* =============== Storage ("DB") =============== */
+const DBKEY = 'kql_web_queries';
+const SETKEY = 'kql_web_settings';
+const RSA_PRIV = 'kql_web_rsa_priv_pem';
+const RSA_PUB = 'kql_web_rsa_pub_pem';
+
+function loadAll(){
+  try{ const arr = JSON.parse(localStorage.getItem(DBKEY)||'[]'); return Array.isArray(arr)?arr:[]; }
+  catch{ return []; }
+}
+function saveAll(items){ localStorage.setItem(DBKEY, JSON.stringify(items)); }
+
+function loadSettings(){
+  const def = { encryption:{type:'AES-256-CBC', passphrase:'', salt_b64:'', iv_b64:''}, ui:{}, rsa:{} };
+  try{
+    const s = JSON.parse(localStorage.getItem(SETKEY)||'{}');
+    return { ...def, ...s, encryption:{...def.encryption, ...(s?.encryption||{})} };
+  }catch{ return def; }
+}
+function saveSettings(s){ localStorage.setItem(SETKEY, JSON.stringify(s)); }
+
+/* =============== Simple template engine =============== */
+function renderTemplate(tpl, ctx){
+  tpl = tpl.replace(/\{%\s*if\s+([\w\.]+)\s*%\}([\s\S]*?)\{%\s*endif\s*%\}/g, (_, v, body)=>{
+    const val = resolvePath(ctx, v);
+    return truthy(val) ? body : '';
+  });
+  tpl = tpl.replace(/\{\{\s*([\w\.]+)\s*\}\}/g, (_, v)=>{
+    const val = resolvePath(ctx, v);
+    if (Array.isArray(val)) return JSON.stringify(val);
+    return val===undefined || val===null ? '' : String(val);
+  });
+  return tpl;
+}
+function resolvePath(obj, path){
+  return path.split('.').reduce((o,k)=> (o && k in o)? o[k] : undefined, obj);
+}
+function truthy(v){ return !(v===undefined || v===null || v==='' || v===0 || v===false); }
+function scanVars(tpl){
+  const a = [];
+  const lines = tpl.split(/\r?\n/);
+
+  lines.forEach(line=>{
+    const trimmed = line.trim();
+    // Ignore full-line comments
+    if(trimmed.startsWith("//")) return;
+
+    // Find {{ var type? }} in this line
+    let m, re = /\{\{\s*([\w\.]+)(?:\s+(\w+))?\s*\}\}/g;
+    while((m = re.exec(line))){
+      a.push({ name: m[1], type: m[2] || "string" });
+    }
+
+    // Also look for {% if var %} unless it's commented out
+    const ifRe = /\{%\s*if\s+([\w\.]+)\s*%\}/g;
+    while((m = ifRe.exec(line))){
+      a.push({ name: m[1], type:"string" });
+    }
+  });
+
+  return a;
+}
+
+
+/* =============== KQL syntax highlighting (very light) =============== */
+function kqlHighlight(text){
+  const esc = text.replace(/[&<>]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));
+  return esc
+    .replace(/(\/\/[^\n]*)/g, '<span class="com">$1</span>')
+    .replace(/\b(let|where|summarize|order|by|asc|desc|in|between|datetime|dynamic|project|extend|top|take|join|on|contains|startswith|endswith|has|bin)\b/g, '<span class="kw">$1</span>')
+    .replace(/'[^']*'/g, '<span class="str">$&</span>')
+    .replace(/\{\{\s*[\w\.]+\s*\}\}/g, '<span class="var">$&</span>');
+}
+
+/* =============== AES-256-CBC & PBKDF2 (WebCrypto) =============== */
+async function pbkdf2(password, salt, length){
+  const keyMat = await crypto.subtle.importKey('raw', encText(password), 'PBKDF2', false, ['deriveBits','deriveKey']);
+  const key = await crypto.subtle.deriveKey({name:'PBKDF2', hash:'SHA-256', salt, iterations:200000},
+                                            keyMat, {name:'AES-CBC', length}, true, ['encrypt','decrypt']);
+  const raw = await crypto.subtle.exportKey('raw', key);
+  return new Uint8Array(raw);
+}
+async function aesEncrypt(plaintextBytes, password, salt, iv){
+  const key = await pbkdf2(password, salt, 256);
+  const aesKey = await crypto.subtle.importKey('raw', key, 'AES-CBC', false, ['encrypt']);
+  const pad = 16 - (plaintextBytes.length % 16);
+  const input = new Uint8Array([...plaintextBytes, ...Array(pad).fill(pad)]);
+  const ct = await crypto.subtle.encrypt({name:'AES-CBC', iv}, aesKey, input);
+  return new Uint8Array(ct);
+}
+async function aesDecrypt(cipherBytes, password, salt, iv){
+  const key = await pbkdf2(password, salt, 256);
+  const aesKey = await crypto.subtle.importKey('raw', key, 'AES-CBC', false, ['decrypt']);
+  const pt = new Uint8Array(await crypto.subtle.decrypt({name:'AES-CBC', iv}, aesKey, cipherBytes));
+  const pad = pt[pt.length-1]; return pt.slice(0, pt.length - pad);
+}
+
+/* =============== XTEA-CBC with PKCS#7 =============== */
+const DELTA = 0x9E3779B9>>>0;
+function xteaEncBlock(v0, v1, k){
+  let sum = 0>>>0;
+  for(let i=0;i<32;i++){
+    sum = (sum + DELTA)>>>0;
+    v0 = (v0 + ((((v1<<4)>>>0) ^ (v1>>>5)) + v1) ^ (sum + k[sum & 3]))>>>0;
+    v1 = (v1 + ((((v0<<4)>>>0) ^ (v0>>>5)) + v0) ^ (sum + k[(sum>>>11)&3]))>>>0;
+  }
+  return [v0>>>0, v1>>>0];
+}
+function xteaDecBlock(v0, v1, k){
+  let sum = (DELTA * 32)>>>0;
+  for(let i=0;i<32;i++){
+    v1 = (v1 - (((((v0<<4)>>>0) ^ (v0>>>5)) + v0) ^ (sum + k[(sum>>>11)&3])))>>>0;
+    v0 = (v0 - (((((v1<<4)>>>0) ^ (v1>>>5)) + v1) ^ (sum + k[sum & 3])))>>>0;
+    sum = (sum - DELTA)>>>0;
+  }
+  return [v0>>>0, v1>>>0];
+}
+async function xteaKeyFromPassword(password, salt){
+  const key16 = await pbkdf2(password, salt, 128);
+  return [0,4,8,12].map(i=>((key16[i]<<24)|(key16[i+1]<<16)|(key16[i+2]<<8)|key16[i+3])>>>0);
+}
+function pkcs7Pad8(bytes){
+  const pad = 8 - (bytes.length % 8);
+  return new Uint8Array([...bytes, ...Array(pad).fill(pad)]);
+}
+function pkcs7Unpad8(bytes){
+  const pad = bytes[bytes.length-1]; return bytes.slice(0, bytes.length - pad);
+}
+async function xteaEncrypt(plaintextBytes, password, salt, iv8){
+  const k = await xteaKeyFromPassword(password, salt);
+  let data = pkcs7Pad8(plaintextBytes);
+  let out = new Uint8Array(data.length);
+  let prev = iv8;
+  for(let i=0;i<data.length;i+=8){
+    const blk = data.slice(i,i+8).map((b,idx)=> b ^ prev[idx]);
+    const v0 = (blk[0]<<24)|(blk[1]<<16)|(blk[2]<<8)|blk[3];
+    const v1 = (blk[4]<<24)|(blk[5]<<16)|(blk[6]<<8)|blk[7];
+    const [e0,e1]=xteaEncBlock(v0>>>0, v1>>>0, k);
+    out.set([ (e0>>>24)&255, (e0>>>16)&255, (e0>>>8)&255, e0&255,
+              (e1>>>24)&255, (e1>>>16)&255, (e1>>>8)&255, e1&255 ], i);
+    prev = out.slice(i,i+8);
+  }
+  return out;
+}
+async function xteaDecrypt(cipherBytes, password, salt, iv8){
+  const k = await xteaKeyFromPassword(password, salt);
+  let out = new Uint8Array(cipherBytes.length);
+  let prev = iv8;
+  for(let i=0;i<cipherBytes.length;i+=8){
+    const ct = cipherBytes.slice(i,i+8);
+    const v0 = (ct[0]<<24)|(ct[1]<<16)|(ct[2]<<8)|ct[3];
+    const v1 = (ct[4]<<24)|(ct[5]<<16)|(ct[6]<<8)|ct[7];
+    const [d0,d1]=xteaDecBlock(v0>>>0, v1>>>0, k);
+    const blk = new Uint8Array([ (d0>>>24)&255,(d0>>>16)&255,(d0>>>8)&255,d0&255,
+                                 (d1>>>24)&255,(d1>>>16)&255,(d1>>>8)&255,d1&255 ]);
+    out.set(blk.map((b,idx)=> b ^ prev[idx]), i);
+    prev = ct;
+  }
+  return pkcs7Unpad8(out);
+}
+
+/* =============== RSA (WebCrypto) =============== */
+async function genRSA4096(){
+  const keyPair = await crypto.subtle.generateKey(
+    {name:'RSA-OAEP', modulusLength:4096, publicExponent:new Uint8Array([1,0,1]), hash:'SHA-256'},
+    true, ['encrypt','decrypt']
+  );
+  const spki = await crypto.subtle.exportKey('spki', keyPair.publicKey);
+  const pkcs8 = await crypto.subtle.exportKey('pkcs8', keyPair.privateKey);
+  const pubPem = toPEM(spki, 'PUBLIC KEY');
+  const privPem = toPEM(pkcs8, 'PRIVATE KEY');
+  localStorage.setItem(RSA_PUB, pubPem);
+  localStorage.setItem(RSA_PRIV, privPem);
+  return {pubPem, privPem};
+}
+function toPEM(buf, label){
+  const b = b64e(buf);
+  const lines = b.match(/.{1,64}/g).join('\n');
+  return `-----BEGIN ${label}-----\n${lines}\n-----END ${label}-----`;
+}
+async function importPubKey(pem){
+  const b64 = pem.replace(/-----(BEGIN|END) [A-Z ]+-----/g,'').replace(/\s+/g,'');
+  const der = b64d(b64);
+  return crypto.subtle.importKey('spki', der, {name:'RSA-OAEP', hash:'SHA-256'}, false, ['encrypt']);
+}
+async function importPrivKey(pem){
+  const b64 = pem.replace(/-----(BEGIN|END) [A-Z ]+-----/g,'').replace(/\s+/g,'');
+  const der = b64d(b64);
+  return crypto.subtle.importKey('pkcs8', der, {name:'RSA-OAEP', hash:'SHA-256'}, false, ['decrypt']);
+}
+
+/* =============== UI State =============== */
+let state = {
+  items: loadAll(),
+  currentId: null,
+  currentSchema: {},
+  settings: loadSettings()
+};
+seedIfEmpty();
+
+function seedIfEmpty(){
+  if(!state.items.length){
+    const item = {
+      id: crypto.randomUUID(), name:"Sample – Suspicious IPs", description:"Demo", tags:"demo",
+      schema: DEFAULT_SCHEMA, template: DEFAULT_TEMPLATE, created_at: nowTs(), updated_at: nowTs()
+    };
+    state.items = [item];
+    saveAll(state.items);
+  }
+}
+
+/* =============== Rendering UI =============== */
+function refreshList(){
+  const q = $('#search').value.trim().toLowerCase();
+  const list = $('#list'); list.innerHTML = '';
+  state.items.slice().sort((a,b)=>b.updated_at-a.updated_at).forEach(it=>{
+    const hay = [it.name, it.description||'', it.tags||''].join(' ').toLowerCase();
+    if(q && !hay.includes(q)) return;
+    const d = document.createElement('div');
+    d.className = 'item' + (state.currentId===it.id ? ' active':'');
+    d.innerHTML = `<div><strong>${it.name}</strong> ${(it.tags? `<span class="pill">${it.tags}</span>`:'')}</div>
+                   <div class="muted">${it.description||''}</div>`;
+    d.onclick = ()=> selectItem(it.id);
+    list.appendChild(d);
+  });
+}
+function selectItem(id){
+  const it = state.items.find(x=>x.id===id); if(!it) return;
+  state.currentId = id;
+  $('#qName').value = it.name || '';
+  $('#qDesc').value = it.description || '';
+  $('#qTags').value = it.tags || '';
+  state.currentSchema = JSON.parse(JSON.stringify(it.schema||{}));
+  buildParams(state.currentSchema);
+  $('#editor').value = it.template || '';
+  updateRendered();
+  refreshList();
+  toast(`Loaded '${it.name}'`);
+}
+function buildParams(schema){
+  const wrap = $('#params'); wrap.innerHTML = '';
+  const entries = Object.entries(schema||{});
+  entries.forEach(([key, meta])=>{
+    const row = document.createElement('div'); row.className='param-row';
+    const lbl = document.createElement('label'); lbl.textContent = key;
+    const input = makeInput(key, meta);
+    row.appendChild(lbl); row.appendChild(input);
+    wrap.appendChild(row);
+  });
+}
+function makeInput(key, meta){
+  const t = (meta && typeof meta==='object') ? (meta.type||'string') : 'string';
+  const def = (meta && typeof meta==='object') ? meta.default : meta;
+  const enumArr = (meta && meta.enum && Array.isArray(meta.enum)) ? meta.enum : null;
+
+  if(enumArr){
+    const s = document.createElement('select');
+    enumArr.forEach(v=>{ const o=document.createElement('option'); o.textContent = String(v); s.appendChild(o); });
+    if(enumArr.includes(def)) s.value = String(def);
+    s.onchange = updateRendered; return s;
+  }
+  if(t==='integer' || t.startsWith('int')){
+    const n = document.createElement('input'); n.type='number';
+    n.min = meta.min ?? -10000000; n.max = meta.max ?? 10000000;
+    n.value = (def ?? 0);
+    n.oninput = updateRendered; return n;
+  }
+  if(t==='array.string'){
+    const i = document.createElement('input'); i.type='text';
+    i.placeholder = 'comma,separated,values';
+    i.value = Array.isArray(def) ? def.join(',') : '';
+    i.oninput = updateRendered; return i;
+  }
+  if(t==='datetime'){
+    const d = document.createElement('input');
+    d.type = 'datetime-local';
+    if(def) try { d.value = def.replace("Z",""); } catch{}
+    d.oninput = updateRendered;
+    return d;
+
+  }
+  const i = document.createElement('input'); i.type='text';
+  if(t==='identifier') i.placeholder='table_or_column_name';
+  if(t==='datetime') i.placeholder='ISO 8601 e.g. 2025-08-14T00:00:00Z';
+  if(t==='string.nullable'){ i.placeholder='(optional)'; i.value = (def==null?'':def); }
+  else i.value = (def==null?'':String(def));
+  i.oninput = updateRendered; return i;
+}
+function paramContext(){
+  const ctx = {};
+  $('#params').querySelectorAll('.param-row').forEach(row=>{
+    const key = row.querySelector('label').textContent;
+    const input = row.querySelector('input, select');
+    const meta = state.currentSchema[key] || {};
+    const t = meta.type || 'string';
+    if(input.tagName==='SELECT'){
+      ctx[key] = input.value;
+    }else if(t==='integer' || t.startsWith('int')){
+      ctx[key] = Number(input.value||0);
+    }else if(t==='array.string'){
+      const parts = (input.value||'').split(',').map(s=>s.trim()).filter(Boolean);
+      ctx[key] = parts;
+    }else if(t==='string.nullable'){
+      ctx[key] = input.value.trim()===''? null : input.value;
+    }else{
+      ctx[key] = input.value;
+    }
+  });
+  return ctx;
+}
+function ensureSchemaCoversTemplate(){
+  const tpl = $('#editor').value;
+  const vars = scanVars(tpl);
+  const missing = vars.filter(v => !(v.name in state.currentSchema));
+  if(!missing.length) return false;
+
+  const existing = paramContext();
+  missing.forEach(v=>{
+    state.currentSchema[v.name] = { type: v.type, default: (v.type==="integer"?0:"") };
+  });
+
+  buildParams(state.currentSchema);
+
+  // restore old values if possible
+  Object.entries(existing).forEach(([k,val])=>{
+    const row = [...$('#params').querySelectorAll('.param-row')]
+      .find(r=>r.querySelector('label').textContent===k);
+    if(!row) return;
+    const input = row.querySelector('input,select');
+    if(input){
+      if(input.tagName==='SELECT'){ 
+        const idx=[...input.options].findIndex(o=>o.value===String(val)); 
+        if(idx>=0) input.selectedIndex=idx; 
+      }
+      else if(input.type==='number'){ input.value = Number(val)||0; }
+      else input.value = (val==null?'': (Array.isArray(val)? val.join(','): String(val)));
+    }
+  });
+  toast(`Auto-added params: ${missing.map(v=>`${v.name}:${v.type}`).join(', ')}`);
+  return true;
+}
+function updateRendered(){
+  const ctx = paramContext();
+  try{
+    const out = renderTemplate($('#editor').value, ctx);
+    $('#rendered').innerHTML = kqlHighlight(out);
+  }catch(e){
+    $('#rendered').textContent = `Error rendering: ${e}`;
+  }
+}
+
+/* =============== Actions =============== */
+$('#search').oninput = refreshList;
+
+$('.tabs .tab[data-tab="template"]').onclick = ()=>switchTab('template');
+$('.tabs .tab[data-tab="rendered"]').onclick = ()=>switchTab('rendered');
+function switchTab(name){
+  $$('.tabs .tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===name));
+  $$('[data-pane]').forEach(p=>p.style.display = (p.dataset.pane===name)? 'block':'none');
+  if(name==='rendered') updateRendered();
+}
+
+$('#editor').addEventListener('input', updateRendered);
+
+$('#suggestSchema').onclick = ()=>{
+  const tpl = $('#editor').value;
+  const vars = scanVars(tpl);
+  if(!vars.length){ toast('No {{ variables }} found'); return; }
+
+  const suggested = {};
+  vars.forEach(v=>{
+    suggested[v.name] = {
+      type: v.type || "string",
+      default: v.type === "integer" ? 0 : ""
+    };
+  });
+
+  state.currentSchema = suggested;
+  buildParams(state.currentSchema);
+  updateRendered();
+  toast(`Suggested schema for: ${vars.map(v=>`${v.name}:${v.type}`).join(', ')}`);
+};
+
+
+$('#copyRendered').onclick = async ()=>{
+  const text = $('#rendered').innerText;
+  await navigator.clipboard.writeText(text);
+  toast('Rendered KQL copied');
+};
+
+$('#newBtn').onclick = ()=>{
+  state.currentId = null;
+  $('#qName').value=''; $('#qDesc').value=''; $('#qTags').value='';
+  state.currentSchema = {};
+  buildParams(state.currentSchema);
+  $('#editor').value='// New KQL template with {{ example_param }}';
+  updateRendered();
+  toast('New query started');
+  refreshList();
+};
+
+$('#saveQuery').onclick = ()=>{
+  const name = ($('#qName').value||'Untitled').trim();
+  const desc = $('#qDesc').value.trim();
+  const tags = $('#qTags').value.trim();
+  const schema = state.currentSchema||{};
+  const tmpl = $('#editor').value;
+
+  if(!state.currentId){
+    const it = {id:crypto.randomUUID(), name, description:desc, tags, schema, template:tmpl, created_at:nowTs(), updated_at:nowTs()};
+    state.items.push(it);
+    state.currentId = it.id;
+    toast('Saved new query');
+  }else{
+    const it = state.items.find(x=>x.id===state.currentId);
+    if(it){ it.name=name; it.description=desc; it.tags=tags; it.schema=schema; it.template=tmpl; it.updated_at=nowTs(); }
+    toast('Updated query');
+  }
+  saveAll(state.items);
+  refreshList();
+};
+
+$('#delBtn').onclick = ()=>{
+  if(!state.currentId){ toast('No query selected'); return; }
+  if(!confirm('Delete this query from your browser storage?')) return;
+  state.items = state.items.filter(x=>x.id!==state.currentId);
+  saveAll(state.items);
+  state.currentId = null;
+  $('#qName').value=''; $('#qDesc').value=''; $('#qTags').value='';
+  state.currentSchema = {};
+  buildParams(state.currentSchema);
+  $('#editor').value='// New KQL template with {{ example_param }}';
+  updateRendered(); refreshList();
+};
+
+$('#loadSchemaTpl').onclick = ()=> $('#schemaIn').click();
+$('#schemaIn').onchange = async (e)=>{
+  const f = e.target.files[0]; if(!f) return;
+  try{
+    const schema = JSON.parse(await f.text());
+    const tPick = new Promise(res=>{
+      const inp = $('#tplIn');
+      inp.onchange = async ev=>{
+        const tf = ev.target.files[0]; if(!tf){ res(null); return; }
+        res(await tf.text());
+      };
+      inp.click();
+    });
+    const tmpl = await tPick; if(tmpl==null) return;
+    state.currentSchema = schema; buildParams(schema);
+    $('#editor').value = tmpl; updateRendered(); toast('Loaded schema + template');
+  }catch(err){ toast('Failed to load schema/template'); }
+};
+
+$('#exportBtn').onclick = async ()=>{
+  const pkg = {
+    type:'KQL-PACKAGE', version:1,
+    name: ($('#qName').value||'Untitled').trim(),
+    description: $('#qDesc').value.trim(),
+    tags: $('#qTags').value.trim(),
+    schema: state.currentSchema||{},
+    template: $('#editor').value
+  };
+  const choice = prompt(
+    'Export type:\n1 = Editable package (.kqlpkg.json)\n2 = Editable package (AES-256-CBC)\n3 = Editable package (XTEA-CBC)\n4 = Editable package (RSA hybrid)\n5 = Rendered .kql',
+    '1'
+  );
+  if(!choice) return;
+
+  if(choice==='1'){
+    downloadJSON(pkg, `${safe(pkg.name)}.kqlpkg.json`); toast('Saved package');
+    return;
+  }
+  if(choice==='5'){
+    const text = $('#rendered').innerText||'';
+    if(!text.trim()){ toast('Nothing to export'); return; }
+    downloadBlob(new Blob([text], {type:'text/plain'}), `${safe(pkg.name)}.kql`); toast('Saved rendered KQL');
+    return;
+  }
+
+  if(choice==='2' || choice==='3'){
+    const pass = state.settings.encryption.passphrase || prompt('Passphrase (not saved):','');
+    if(!pass){ toast('Passphrase required'); return; }
+    const salt = state.settings.encryption.salt_b64 ? b64d(state.settings.encryption.salt_b64) : crypto.getRandomValues(new Uint8Array(16));
+    const isAES = choice==='2';
+    const iv = state.settings.encryption.iv_b64 ? b64d(state.settings.encryption.iv_b64) : (isAES? crypto.getRandomValues(new Uint8Array(16)) : crypto.getRandomValues(new Uint8Array(8)));
+    const pt = encText(JSON.stringify(pkg));
+
+    let ct, alg;
+    try{
+      if(isAES){
+        if(iv.length!==16){ alert('AES IV must be 16 bytes'); return; }
+        ct = await aesEncrypt(pt, pass, salt, iv); alg='AES-256-CBC';
+      }else{
+        if(iv.length!==8){ alert('XTEA IV must be 8 bytes'); return; }
+        ct = await xteaEncrypt(pt, pass, salt, iv); alg='XTEA-CBC';
+      }
+    }catch(e){ alert('Encryption failed: '+e); return; }
+
+    const wrapped = {alg, wrapped:'KQL-PACKAGE', kdf:'PBKDF2-SHA256', iterations:200000,
+                     salt:b64e(salt), iv:b64e(iv), ct:b64e(ct)};
+    downloadJSON(wrapped, `${safe(pkg.name)}.enc.json`); toast('Saved encrypted package');
+    return;
+  }
+
+  if(choice==='4'){
+    const pubPem = localStorage.getItem(RSA_PUB) || prompt('Paste recipient PUBLIC KEY (PEM):','') || '';
+    if(!pubPem){ toast('No public key'); return; }
+    const pt = encText(JSON.stringify(pkg));
+    const aesKey = crypto.getRandomValues(new Uint8Array(32));
+    const iv = crypto.getRandomValues(new Uint8Array(16));
+    const aesKeyImp = await crypto.subtle.importKey('raw', aesKey, 'AES-CBC', false, ['encrypt']);
+    const pad = 16 - (pt.length % 16);
+    const pPad = new Uint8Array([...pt, ...Array(pad).fill(pad)]);
+    const ct = new Uint8Array(await crypto.subtle.encrypt({name:'AES-CBC', iv}, aesKeyImp, pPad));
+    const pub = await importPubKey(pubPem);
+    const ekey = new Uint8Array(await crypto.subtle.encrypt({name:'RSA-OAEP'}, pub, aesKey));
+    const out = {alg:'HYBRID-RSA-AES256-CBC', wrapped:'KQL-PACKAGE', ekey:b64e(ekey), iv:b64e(iv), salt:b64e(crypto.getRandomValues(new Uint8Array(16))), ct:b64e(ct)};
+    downloadJSON(out, `${safe(pkg.name)}.hybrid.json`); toast('Saved RSA-hybrid package');
+    return;
+  }
+};
+
+$('#importBtn').onclick = ()=> $('#fileIn').click();
+$('#fileIn').onchange = async (e)=>{
+  const f = e.target.files[0]; if(!f) return;
+  try{
+    const text = await f.text();
+    let data;
+    try{ data = JSON.parse(text); }catch{ data = null; }
+    if(data){
+      const alg = data.alg || '';
+      if(alg==='HYBRID-RSA-AES256-CBC' && data.wrapped==='KQL-PACKAGE'){
+        const privPem = localStorage.getItem(RSA_PRIV) || prompt('Paste your PRIVATE KEY (PEM):','') || '';
+        if(!privPem){ toast('No private key'); return; }
+        const priv = await importPrivKey(privPem);
+        const ekey = b64d(data.ekey);
+        const aesKey = new Uint8Array(await crypto.subtle.decrypt({name:'RSA-OAEP'}, priv, ekey));
+        const iv = b64d(data.iv);
+        const ct = b64d(data.ct);
+        const aesImp = await crypto.subtle.importKey('raw', aesKey, 'AES-CBC', false, ['decrypt']);
+        const pPad = new Uint8Array(await crypto.subtle.decrypt({name:'AES-CBC', iv}, aesImp, ct));
+        const pad = pPad[pPad.length-1];
+        const pt = pPad.slice(0, pPad.length - pad);
+        return loadKqlPackage(JSON.parse(decText(pt)));
+      }
+      if((alg==='AES-256-CBC' || alg==='XTEA-CBC') && data.wrapped==='KQL-PACKAGE'){
+        const pass = state.settings.encryption.passphrase || prompt('Passphrase:','');
+        if(!pass){ toast('Passphrase required'); return; }
+        const salt = b64d(data.salt), iv = b64d(data.iv), ct = b64d(data.ct);
+        let ptBytes;
+        if(alg==='AES-256-CBC') ptBytes = await aesDecrypt(ct, pass, salt, iv);
+        else ptBytes = await xteaDecrypt(ct, pass, salt, iv);
+        return loadKqlPackage(JSON.parse(decText(ptBytes)));
+      }
+      if(data.type==='KQL-PACKAGE'){
+        return loadKqlPackage(data);
+      }
+      const schema = data;
+      const tplText = await pickFileText('.kql,.txt');
+      if(tplText==null) return;
+      state.currentSchema = schema; buildParams(schema); $('#editor').value = tplText;
+      updateRendered(); toast('Loaded schema + template');
+      return;
+    }
+    $('#editor').value = text; toast('Imported plain text/KQL'); updateRendered();
+  }catch(err){ alert('Import failed: '+err); }
+};
+
+function loadKqlPackage(pkg){
+  if(pkg.type!=='KQL-PACKAGE') throw new Error('Not a KQL-PACKAGE');
+  $('#qName').value = pkg.name||'';
+  $('#qDesc').value = pkg.description||'';
+  $('#qTags').value = pkg.tags||'';
+  state.currentSchema = pkg.schema||{};
+  buildParams(state.currentSchema);
+  $('#editor').value = pkg.template||'';
+  updateRendered();
+  toast('Editable package loaded');
+}
+
+/* =============== Settings Modal Logic =============== */
+const menuBtn = $('#menuBtn');
+const dropdown = $('#dropdown');
+menuBtn.onclick = ()=> dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+document.body.addEventListener('click', (e) => {
+  if (!menuBtn.contains(e.target) && !dropdown.contains(e.target)) dropdown.style.display = 'none';
+});
+$('#openSettings').onclick = () => { dropdown.style.display = 'none'; openSettingsModal(); };
+
+function openSettingsModal(){
+  // Populate current settings each open
+  $('#encType').value = state.settings.encryption.type;
+  $('#passphrase').value = state.settings.encryption.passphrase || '';
+  $('#saltB64').value = state.settings.encryption.salt_b64 || '';
+  $('#ivB64').value = state.settings.encryption.iv_b64 || '';
+
+  $('#settingsModal').style.display = 'flex';
+  $('#settingsModal').setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+function closeModal(){
+  $('#settingsModal').style.display = 'none';
+  $('#settingsModal').setAttribute('aria-hidden','true');
+  document.body.classList.remove('modal-open');
+}
+$('#closeModal').onclick = closeModal;
+$('#settingsModal').onclick = (e)=>{ if(e.target===e.currentTarget) closeModal(); };
+
+// Save + RSA actions (bound to modal inputs/buttons)
+$('#saveSettings').onclick = ()=>{
+  state.settings.encryption.type = $('#encType').value;
+  state.settings.encryption.passphrase = $('#passphrase').value;
+  state.settings.encryption.salt_b64 = $('#saltB64').value;
+  state.settings.encryption.iv_b64 = $('#ivB64').value;
+  saveSettings(state.settings);
+  toast('Settings updated');
+  closeModal();
+};
+$('#genRSA').onclick = async ()=>{
+  await genRSA4096(); toast('Generated RSA 4096-bit key pair (stored locally).');
+};
+$('#exportPub').onclick = ()=>{
+  const pem = localStorage.getItem(RSA_PUB);
+  if(!pem){ toast('No public key'); return; }
+  downloadBlob(new Blob([pem],{type:'application/x-pem-file'}), 'public_key.pem');
+};
+$('#exportPriv').onclick = ()=>{
+  const pem = localStorage.getItem(RSA_PRIV);
+  if(!pem){ toast('No private key'); return; }
+  downloadBlob(new Blob([pem],{type:'application/x-pem-file'}), 'private_key.pem');
+};
+
+/* =============== Helpers =============== */
+function downloadJSON(obj, name){ downloadBlob(new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}), name); }
+function downloadBlob(blob, name){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+}
+function safe(name){ return name.replace(/[^\w\-\.\s]/g,'').trim() || 'query'; }
+function pickFileText(accept){
+  return new Promise(res=>{
+    const inp = document.createElement('input'); inp.type='file'; inp.accept=accept;
+    inp.onchange = async e=>{
+      const f = e.target.files[0]; if(!f){ res(null); return; }
+      res(await f.text());
+    };
+    inp.click();
+  });
+}
+
+/* =============== Boot =============== */
+refreshList();
+if(state.items.length){ selectItem(state.items[0].id); }
+</script>
+</body>
+</html>
