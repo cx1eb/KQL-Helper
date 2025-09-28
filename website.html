@@ -821,14 +821,19 @@ function normalizeSchema(schema, tplText){
 
 
 function buildParams(schema){
-  state.currentSchema = normalizeSchema(schema, $('#editor').value);
-  const wrap = $('#params'); wrap.innerHTML = '';
-  const entries = Object.entries(state.currentSchema||{});
+  state.currentSchema = JSON.parse(JSON.stringify(schema || {}));
+
+  const wrap = $('#params');
+  wrap.innerHTML = '';
+  const entries = Object.entries(state.currentSchema);
   entries.forEach(([key, meta])=>{
-    const row = document.createElement('div'); row.className='param-row';
-    const lbl = document.createElement('label'); lbl.textContent = key;
+    const row = document.createElement('div');
+    row.className='param-row';
+    const lbl = document.createElement('label');
+    lbl.textContent = key;
     const input = makeInput(key, meta);
-    row.appendChild(lbl); row.appendChild(input);
+    row.appendChild(lbl);
+    row.appendChild(input);
     wrap.appendChild(row);
   });
 }
@@ -996,10 +1001,12 @@ $('#copyRendered').onclick = async ()=>{
 
 $('#newBtn').onclick = ()=>{
   state.currentId = null;
-  $('#qName').value=''; $('#qDesc').value=''; $('#qTags').value='';
-  state.currentSchema = {};
-  buildParams(state.currentSchema);
+  $('#qName').value='';
+  $('#qDesc').value='';
+  $('#qTags').value='';
   $('#editor').value='// New KQL template with {{ example_param }}';
+  state.currentSchema = {}; 
+  buildParams(state.currentSchema);
   updateRendered();
   toast('New query started');
   refreshList();
