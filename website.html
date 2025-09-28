@@ -516,6 +516,7 @@ const DBKEY = 'kql_web_queries';
 const SETKEY = 'kql_web_settings';
 const RSA_PRIV = 'kql_web_rsa_priv_pem';
 const RSA_PUB = 'kql_web_rsa_pub_pem';
+const UIKEY = 'kql_web_ui';
 
 function loadAll(){
   try{ const arr = JSON.parse(localStorage.getItem(DBKEY)||'[]'); return Array.isArray(arr)?arr:[]; }
@@ -531,6 +532,14 @@ function loadSettings(){
   }catch{ return def; }
 }
 function saveSettings(s){ localStorage.setItem(SETKEY, JSON.stringify(s)); }
+
+function loadUI(){
+  try { return JSON.parse(localStorage.getItem(UIKEY) || '{}'); }
+  catch { return {}; }
+}
+function saveUI(ui){
+  localStorage.setItem(UIKEY, JSON.stringify(ui));
+}
 
 /* =============== Simple template engine =============== */
 function renderTemplate(tpl, ctx){
@@ -718,7 +727,9 @@ let state = {
   items: loadAll(),
   currentId: null,
   currentSchema: {},
-  settings: loadSettings()
+  settings: loadSettings(),
+  ui: loadUI(),
+  paramValues: {}
 };
 seedIfEmpty();
 
@@ -737,7 +748,7 @@ function seedIfEmpty(){
 function refreshList(){
   const q = $('#search').value.trim().toLowerCase();
   const list = $('#list'); list.innerHTML = '';
-  state.items.slice().sort((a,b)=>b.updated_at-a.updated_at).forEach(it=>{
+  state.items.slice().forEach(it=>{
     const hay = [it.name, it.description||'', it.tags||''].join(' ').toLowerCase();
     if(q && !hay.includes(q)) return;
     const d = document.createElement('div');
@@ -759,12 +770,15 @@ function selectItem(id){
   const tpl = it.template || '';
   state.currentSchema = normalizeSchema(JSON.parse(JSON.stringify(it.schema||{})), tpl);
 
+  state.paramValues = JSON.parse(JSON.stringify(it.values || {}));
+
   buildParams(state.currentSchema);
   $('#editor').value = tpl;
   updateRendered();
   refreshList();
   toast(`Loaded '${it.name}'`);
 }
+
 
 
 function normalizeSchema(schema, tplText){
@@ -844,39 +858,63 @@ function makeInput(key, meta){
   const def = (meta && typeof meta==='object') ? meta.default : meta;
   const enumArr = (meta && meta.enum && Array.isArray(meta.enum)) ? meta.enum : null;
 
+  const hasSaved = state.paramValues && Object.prototype.hasOwnProperty.call(state.paramValues, key);
+  const saved = hasSaved ? state.paramValues[key] : undefined;
+
   if(enumArr){
     const s = document.createElement('select');
     enumArr.forEach(v=>{ const o=document.createElement('option'); o.textContent = String(v); s.appendChild(o); });
-    if(enumArr.includes(def)) s.value = String(def);
-    s.onchange = updateRendered; return s;
+    if (hasSaved && enumArr.map(String).includes(String(saved))) s.value = String(saved);
+    else if (enumArr.includes(def)) s.value = String(def);
+    s.onchange = updateRendered; 
+    return s;
   }
+
   if(t==='integer' || t.startsWith('int')){
     const n = document.createElement('input'); n.type='number';
     n.min = meta.min ?? -10000000; n.max = meta.max ?? 10000000;
-    n.value = (def ?? 0);
-    n.oninput = updateRendered; return n;
+    n.value = hasSaved ? Number(saved) : (def ?? 0);
+    n.oninput = updateRendered; 
+    return n;
   }
+
   if(t==='array.string'){
     const i = document.createElement('input'); i.type='text';
     i.placeholder = 'comma,separated,values';
-    i.value = Array.isArray(def) ? def.join(',') : '';
-    i.oninput = updateRendered; return i;
+    const val = hasSaved 
+      ? (Array.isArray(saved) ? saved.join(',') : String(saved||'')) 
+      : (Array.isArray(def) ? def.join(',') : '');
+    i.value = val;
+    i.oninput = updateRendered; 
+    return i;
   }
+
   if(t==='datetime'){
     const d = document.createElement('input');
     d.type = 'datetime-local';
-    if(def) try { d.value = def.replace("Z",""); } catch{}
+    const use = hasSaved ? saved : def;
+    if(use) try { d.value = String(use).replace('Z',''); } catch {}
     d.oninput = updateRendered;
     return d;
-
   }
-  const i = document.createElement('input'); i.type='text';
+
+  const i = document.createElement('input'); 
+  i.type='text';
   if(t==='identifier') i.placeholder='table_or_column_name';
-  if(t==='datetime') i.placeholder='ISO 8601 e.g. 2025-08-14T00:00:00Z';
-  if(t==='string.nullable'){ i.placeholder='(optional)'; i.value = (def==null?'':def); }
-  else i.value = (def==null?'':String(def));
-  i.oninput = updateRendered; return i;
+  if(t==='datetime')   i.placeholder='ISO 8601 e.g. 2025-08-14T00:00:00Z';
+
+  if(t==='string.nullable'){
+    i.placeholder='(optional)';
+    i.value = hasSaved ? (saved==null ? '' : String(saved)) : (def==null ? '' : String(def));
+  }else{
+    i.value = hasSaved ? String(saved ?? '') : (def==null ? '' : String(def));
+  }
+
+  i.oninput = updateRendered; 
+  return i;
 }
+
+
 function paramContext(){
   const ctx = {};
   $('#params').querySelectorAll('.param-row').forEach(row=>{
@@ -951,10 +989,24 @@ function updateRendered(){
   try{
     const out = renderTemplate($('#editor').value, ctx);
     $('#rendered').innerHTML = kqlHighlight(out);
+
+    state.paramValues = ctx;
+    if (state.currentId) {
+      const it = state.items.find(x=>x.id===state.currentId);
+      if (it) {
+        it.values = JSON.parse(JSON.stringify(ctx));
+        it.updated_at = nowTs();
+        saveAll(state.items);
+      }
+    }
+
+    state.ui.lastRendered = out;
+    saveUI(state.ui);
   }catch(e){
     $('#rendered').textContent = `Error rendering: ${e}`;
   }
 }
+
 
 /* =============== Actions =============== */
 $('#search').oninput = refreshList;
@@ -965,6 +1017,9 @@ function switchTab(name){
   $$('.tabs .tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===name));
   $$('[data-pane]').forEach(p=>p.style.display = (p.dataset.pane===name)? 'block':'none');
   if(name==='rendered') updateRendered();
+
+  state.ui.activeTab = name;
+  saveUI(state.ui);
 }
 
 $('#editor').addEventListener('input', updateRendered);
@@ -1001,16 +1056,16 @@ $('#copyRendered').onclick = async ()=>{
 
 $('#newBtn').onclick = ()=>{
   state.currentId = null;
-  $('#qName').value='';
-  $('#qDesc').value='';
-  $('#qTags').value='';
+  $('#qName').value=''; $('#qDesc').value=''; $('#qTags').value='';
   $('#editor').value='// New KQL template with {{ example_param }}';
-  state.currentSchema = {}; 
+  state.currentSchema = {};
+  state.paramValues = {};
   buildParams(state.currentSchema);
   updateRendered();
   toast('New query started');
   refreshList();
 };
+
 
 $('#saveQuery').onclick = ()=>{
   const name = ($('#qName').value||'Untitled').trim();
@@ -1264,7 +1319,16 @@ function pickFileText(accept){
 
 /* =============== Boot =============== */
 refreshList();
-if(state.items.length){ selectItem(state.items[0].id); }
+if(state.items.length){
+  selectItem(state.items[0].id);
+}
+
+const lastTab = state.ui.activeTab || 'template';
+switchTab(lastTab);
+
+if(lastTab === 'rendered' && state.ui.lastRendered){
+  $('#rendered').innerHTML = kqlHighlight(state.ui.lastRendered);
+}
 </script>
 </body>
 </html>
