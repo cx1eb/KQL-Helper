@@ -409,6 +409,45 @@
   </div>
 </div>
 
+<!-- Export Modal -->
+<div id="exportModal" class="modal" aria-hidden="true">
+  <div class="modal-content" role="dialog" aria-modal="true" aria-label="Export Options">
+    <span id="closeExport" class="close" title="Close">&times;</span>
+    <h3 style="margin:0 0 6px 0;">Export Query</h3>
+    <div class="subtle">Choose how you want to export your query package.</div>
+
+    <div class="section">
+      <h4>Type</h4>
+      <div class="row">
+        <select id="exportType" class="grow">
+          <option value="1">Editable package (.kqlpkg.json)</option>
+          <option value="2">Encrypted package (AES-256-CBC)</option>
+          <option value="3">Encrypted package (XTEA-CBC)</option>
+          <option value="4">RSA Hybrid Encrypted package</option>
+          <option value="5">Rendered KQL (.kql)</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="exportExtra" class="section" style="display:none">
+      <h4>Additional Options</h4>
+      <div id="exportPassRow" class="row" style="display:none">
+        <label>Passphrase</label>
+        <input id="exportPass" type="text" placeholder="Enter passphrase"/>
+      </div>
+      <div id="exportPubRow" class="row" style="display:none">
+        <label>Public Key</label>
+        <textarea id="exportPubPem" placeholder="Paste recipient PUBLIC KEY PEM"></textarea>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:14px;">
+      <button id="confirmExport" class="btn grow">Export</button>
+    </div>
+  </div>
+</div>
+
+
 <div class="app" style="margin-top:38px;">
   <!-- LEFT: Library -->
   <div class="col left">
@@ -1120,74 +1159,7 @@ $('#schemaIn').onchange = async (e)=>{
   }catch(err){ toast('Failed to load schema/template'); }
 };
 
-$('#exportBtn').onclick = async ()=>{
-  const pkg = {
-    type:'KQL-PACKAGE', version:1,
-    name: ($('#qName').value||'Untitled').trim(),
-    description: $('#qDesc').value.trim(),
-    tags: $('#qTags').value.trim(),
-    schema: state.currentSchema||{},
-    template: $('#editor').value
-  };
-  const choice = prompt(
-    'Export type:\n1 = Editable package (.kqlpkg.json)\n2 = Editable package (AES-256-CBC)\n3 = Editable package (XTEA-CBC)\n4 = Editable package (RSA hybrid)\n5 = Rendered .kql',
-    '1'
-  );
-  if(!choice) return;
-
-  if(choice==='1'){
-    downloadJSON(pkg, `${safe(pkg.name)}.kqlpkg.json`); toast('Saved package');
-    return;
-  }
-  if(choice==='5'){
-    const text = $('#rendered').innerText||'';
-    if(!text.trim()){ toast('Nothing to export'); return; }
-    downloadBlob(new Blob([text], {type:'text/plain'}), `${safe(pkg.name)}.kql`); toast('Saved rendered KQL');
-    return;
-  }
-
-  if(choice==='2' || choice==='3'){
-    const pass = state.settings.encryption.passphrase || prompt('Passphrase (not saved):','');
-    if(!pass){ toast('Passphrase required'); return; }
-    const salt = state.settings.encryption.salt_b64 ? b64d(state.settings.encryption.salt_b64) : crypto.getRandomValues(new Uint8Array(16));
-    const isAES = choice==='2';
-    const iv = state.settings.encryption.iv_b64 ? b64d(state.settings.encryption.iv_b64) : (isAES? crypto.getRandomValues(new Uint8Array(16)) : crypto.getRandomValues(new Uint8Array(8)));
-    const pt = encText(JSON.stringify(pkg));
-
-    let ct, alg;
-    try{
-      if(isAES){
-        if(iv.length!==16){ alert('AES IV must be 16 bytes'); return; }
-        ct = await aesEncrypt(pt, pass, salt, iv); alg='AES-256-CBC';
-      }else{
-        if(iv.length!==8){ alert('XTEA IV must be 8 bytes'); return; }
-        ct = await xteaEncrypt(pt, pass, salt, iv); alg='XTEA-CBC';
-      }
-    }catch(e){ alert('Encryption failed: '+e); return; }
-
-    const wrapped = {alg, wrapped:'KQL-PACKAGE', kdf:'PBKDF2-SHA256', iterations:200000,
-                     salt:b64e(salt), iv:b64e(iv), ct:b64e(ct)};
-    downloadJSON(wrapped, `${safe(pkg.name)}.enc.json`); toast('Saved encrypted package');
-    return;
-  }
-
-  if(choice==='4'){
-    const pubPem = localStorage.getItem(RSA_PUB) || prompt('Paste recipient PUBLIC KEY (PEM):','') || '';
-    if(!pubPem){ toast('No public key'); return; }
-    const pt = encText(JSON.stringify(pkg));
-    const aesKey = crypto.getRandomValues(new Uint8Array(32));
-    const iv = crypto.getRandomValues(new Uint8Array(16));
-    const aesKeyImp = await crypto.subtle.importKey('raw', aesKey, 'AES-CBC', false, ['encrypt']);
-    const pad = 16 - (pt.length % 16);
-    const pPad = new Uint8Array([...pt, ...Array(pad).fill(pad)]);
-    const ct = new Uint8Array(await crypto.subtle.encrypt({name:'AES-CBC', iv}, aesKeyImp, pPad));
-    const pub = await importPubKey(pubPem);
-    const ekey = new Uint8Array(await crypto.subtle.encrypt({name:'RSA-OAEP'}, pub, aesKey));
-    const out = {alg:'HYBRID-RSA-AES256-CBC', wrapped:'KQL-PACKAGE', ekey:b64e(ekey), iv:b64e(iv), salt:b64e(crypto.getRandomValues(new Uint8Array(16))), ct:b64e(ct)};
-    downloadJSON(out, `${safe(pkg.name)}.hybrid.json`); toast('Saved RSA-hybrid package');
-    return;
-  }
-};
+$('#exportBtn').onclick = ()=> openExportModal();
 
 $('#importBtn').onclick = ()=> $('#fileIn').click();
 $('#fileIn').onchange = async (e)=>{
@@ -1329,6 +1301,128 @@ switchTab(lastTab);
 if(lastTab === 'rendered' && state.ui.lastRendered){
   $('#rendered').innerHTML = kqlHighlight(state.ui.lastRendered);
 }
+
+/* =============== Export Modal Logic =============== */
+function openExportModal(){
+  $('#exportModal').style.display = 'flex';
+  $('#exportModal').setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+  $('#exportExtra').style.display = 'none';
+  $('#exportPassRow').style.display = 'none';
+  $('#exportPubRow').style.display = 'none';
+  $('#exportType').value = "1";
+}
+function closeExportModal(){
+  $('#exportModal').style.display = 'none';
+  $('#exportModal').setAttribute('aria-hidden','true');
+  document.body.classList.remove('modal-open');
+}
+$('#closeExport').onclick = closeExportModal;
+$('#exportModal').onclick = (e)=>{ if(e.target===e.currentTarget) closeExportModal(); };
+
+$('#exportType').onchange = ()=>{
+  const v = $('#exportType').value;
+  $('#exportExtra').style.display = (v==="2"||v==="3"||v==="4") ? 'block' : 'none';
+  $('#exportPassRow').style.display = (v==="2"||v==="3") ? 'flex' : 'none';
+  $('#exportPubRow').style.display  = (v==="4") ? 'flex' : 'none';
+};
+
+$('#confirmExport').onclick = async ()=>{
+  const pkg = {
+    type:'KQL-PACKAGE', version:1,
+    name: ($('#qName').value||'Untitled').trim(),
+    description: $('#qDesc').value.trim(),
+    tags: $('#qTags').value.trim(),
+    schema: state.currentSchema||{},
+    template: $('#editor').value
+  };
+
+  const choice = $('#exportType').value;
+
+  // Editable JSON
+  if(choice==='1'){
+    downloadJSON(pkg, `${safe(pkg.name)}.kqlpkg.json`);
+    toast('Saved package');
+  }
+
+  // Rendered KQL
+  else if(choice==='5'){
+    const text = $('#rendered').innerText||'';
+    if(!text.trim()){ toast('Nothing to export'); return; }
+    downloadBlob(new Blob([text], {type:'text/plain'}), `${safe(pkg.name)}.kql`);
+    toast('Saved rendered KQL');
+  }
+
+  // AES-256-CBC or XTEA-CBC
+  else if(choice==='2' || choice==='3'){
+    const pass = $('#exportPass').value || state.settings.encryption.passphrase;
+    if(!pass){ toast('Passphrase required'); return; }
+
+    const salt = state.settings.encryption.salt_b64
+      ? b64d(state.settings.encryption.salt_b64)
+      : crypto.getRandomValues(new Uint8Array(16));
+
+    const iv = state.settings.encryption.iv_b64
+      ? b64d(state.settings.encryption.iv_b64)
+      : (choice==='2'
+          ? crypto.getRandomValues(new Uint8Array(16)) // 16B IV for AES
+          : crypto.getRandomValues(new Uint8Array(8))); // 8B IV for XTEA
+
+    const pt = encText(JSON.stringify(pkg));
+
+    let ct;
+    if(choice==='2'){ // AES
+      ct = await aesEncrypt(pt, pass, salt, iv);
+    } else { // XTEA
+      ct = await xteaEncrypt(pt, pass, salt, iv);
+    }
+
+    const out = {
+      wrapped:'KQL-PACKAGE',
+      alg: (choice==='2'?'AES-256-CBC':'XTEA-CBC'),
+      salt: b64e(salt),
+      iv: b64e(iv),
+      ct: b64e(ct)
+    };
+
+    downloadJSON(out, `${safe(pkg.name)}.enc.json`);
+    toast('Saved encrypted package');
+  }
+
+  // RSA Hybrid
+  else if(choice==='4'){
+    const pubPem = $('#exportPubPem').value || localStorage.getItem(RSA_PUB);
+    if(!pubPem){ toast('No public key'); return; }
+    const pubKey = await importPubKey(pubPem);
+
+    // generate random AES key
+    const aesKeyRaw = crypto.getRandomValues(new Uint8Array(32));
+    const aesKey = await crypto.subtle.importKey('raw', aesKeyRaw, 'AES-CBC', false, ['encrypt']);
+    const iv = crypto.getRandomValues(new Uint8Array(16));
+
+    const pt = encText(JSON.stringify(pkg));
+    const pad = 16 - (pt.length % 16);
+    const padded = new Uint8Array([...pt, ...Array(pad).fill(pad)]);
+    const ct = new Uint8Array(await crypto.subtle.encrypt({name:'AES-CBC', iv}, aesKey, padded));
+
+    const ekey = new Uint8Array(await crypto.subtle.encrypt({name:'RSA-OAEP'}, pubKey, aesKeyRaw));
+
+    const out = {
+      wrapped:'KQL-PACKAGE',
+      alg:'HYBRID-RSA-AES256-CBC',
+      iv: b64e(iv),
+      ekey: b64e(ekey),
+      ct: b64e(ct)
+    };
+
+    downloadJSON(out, `${safe(pkg.name)}.rsa.json`);
+    toast('Saved RSA-encrypted package');
+  }
+
+  closeExportModal();
+};
+
+
 </script>
 </body>
 </html>
