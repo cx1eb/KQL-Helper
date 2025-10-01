@@ -200,7 +200,6 @@
   .danger{
     color:#ff6b6b
   }
-  /* Topbar + modal */
   #topbar {
     position: fixed;
     top: 0;
@@ -582,18 +581,15 @@ function saveUI(ui){
 
 /* =============== Simple template engine =============== */
 function renderTemplate(tpl, ctx){
-  // Fix for handling new "detect types" for {{ var type }}
 
-  // Handle {% if %} ... {% endif %}
   tpl = tpl.replace(/\{%\s*if\s+([\w\.]+)\s*%\}([\s\S]*?)\{%\s*endif\s*%\}/g, (_, v, body)=>{
     const val = resolvePath(ctx, v);
     return truthy(val) ? body : '';
   });
 
-  // Handle {{ var }} or {{ var type }}
   tpl = tpl.replace(/\{\{\s*([\w\.]+)(?:\s+[\w\.:\[\],]+)?\s*\}\}/g, (_, v)=>{
     const val = resolvePath(ctx, v);
-    if (Array.isArray(val)) return JSON.stringify(val);   // e.g. ["1.2.3.4","5.6.7.8"]
+    if (Array.isArray(val)) return JSON.stringify(val);
     return val===undefined || val===null ? '' : String(val);
   });
 
@@ -613,16 +609,13 @@ function scanVars(tpl){
 
   lines.forEach(line=>{
     const trimmed = line.trim();
-    // Ignore full-line comments
     if(trimmed.startsWith("//")) return;
 
-    // Find {{ var type? }} in this line
     let m, re = /\{\{\s*([\w\.]+)(?:\s+([\w\.:\[\],]+))?\s*\}\}/g;
     while((m = re.exec(line))){
       a.push({ name: m[1], type: m[2] || "string" });
     }
 
-    // Also look for {% if var %} unless it's commented out
     const ifRe = /\{%\s*if\s+([\w\.]+)\s*%\}/g;
     while((m = ifRe.exec(line))){
       a.push({ name: m[1], type:"string" });
@@ -1163,13 +1156,22 @@ $('#exportBtn').onclick = ()=> openExportModal();
 
 $('#importBtn').onclick = ()=> $('#fileIn').click();
 $('#fileIn').onchange = async (e)=>{
-  const f = e.target.files[0]; if(!f) return;
-  try{
+  const f = e.target.files[0]; 
+  if(!f) return;
+
+  try {
     const text = await f.text();
     let data;
-    try{ data = JSON.parse(text); }catch{ data = null; }
+    try { 
+      data = JSON.parse(text); 
+    } catch { 
+      data = null; 
+    }
+
     if(data){
       const alg = data.alg || '';
+
+      // Hybrid RSA
       if(alg==='HYBRID-RSA-AES256-CBC' && data.wrapped==='KQL-PACKAGE'){
         const privPem = localStorage.getItem(RSA_PRIV) || prompt('Paste your PRIVATE KEY (PEM):','') || '';
         if(!privPem){ toast('No private key'); return; }
@@ -1184,6 +1186,8 @@ $('#fileIn').onchange = async (e)=>{
         const pt = pPad.slice(0, pPad.length - pad);
         return loadKqlPackage(JSON.parse(decText(pt)));
       }
+
+      // AES or XTEA
       if((alg==='AES-256-CBC' || alg==='XTEA-CBC') && data.wrapped==='KQL-PACKAGE'){
         const pass = state.settings.encryption.passphrase || prompt('Passphrase:','');
         if(!pass){ toast('Passphrase required'); return; }
@@ -1193,19 +1197,36 @@ $('#fileIn').onchange = async (e)=>{
         else ptBytes = await xteaDecrypt(ct, pass, salt, iv);
         return loadKqlPackage(JSON.parse(decText(ptBytes)));
       }
+
+      // Plain KQL package
       if(data.type==='KQL-PACKAGE'){
         return loadKqlPackage(data);
       }
+
+      // Schema + template
       const schema = data;
       const tplText = await pickFileText('.kql,.txt');
       if(tplText==null) return;
-      state.currentSchema = schema; buildParams(schema); $('#editor').value = tplText;
-      updateRendered(); toast('Loaded schema + template');
+      state.currentSchema = schema; 
+      buildParams(schema); 
+      $('#editor').value = tplText;
+      updateRendered(); 
+      toast('Loaded schema + template');
       return;
     }
-    $('#editor').value = text; toast('Imported plain text/KQL'); updateRendered();
-  }catch(err){ alert('Import failed: '+err); }
+
+    // Fallback plain text import
+    $('#editor').value = text; 
+    toast('Imported plain text/KQL'); 
+    updateRendered();
+
+  } catch(err){ 
+    alert('Import failed: '+err); 
+  } finally {
+    e.target.value = "";
+  }
 };
+
 
 function loadKqlPackage(pkg){
   if(pkg.type!=='KQL-PACKAGE') throw new Error('Not a KQL-PACKAGE');
@@ -1229,7 +1250,6 @@ document.body.addEventListener('click', (e) => {
 $('#openSettings').onclick = () => { dropdown.style.display = 'none'; openSettingsModal(); };
 
 function openSettingsModal(){
-  // Populate current settings each open
   $('#encType').value = state.settings.encryption.type;
   $('#passphrase').value = state.settings.encryption.passphrase || '';
   $('#saltB64').value = state.settings.encryption.salt_b64 || '';
@@ -1247,7 +1267,6 @@ function closeModal(){
 $('#closeModal').onclick = closeModal;
 $('#settingsModal').onclick = (e)=>{ if(e.target===e.currentTarget) closeModal(); };
 
-// Save + RSA actions (bound to modal inputs/buttons)
 $('#saveSettings').onclick = ()=>{
   state.settings.encryption.type = $('#encType').value;
   state.settings.encryption.passphrase = $('#passphrase').value;
@@ -1339,13 +1358,11 @@ $('#confirmExport').onclick = async ()=>{
 
   const choice = $('#exportType').value;
 
-  // Editable JSON
   if(choice==='1'){
     downloadJSON(pkg, `${safe(pkg.name)}.kqlpkg.json`);
     toast('Saved package');
   }
 
-  // Rendered KQL
   else if(choice==='5'){
     const text = $('#rendered').innerText||'';
     if(!text.trim()){ toast('Nothing to export'); return; }
@@ -1353,7 +1370,6 @@ $('#confirmExport').onclick = async ()=>{
     toast('Saved rendered KQL');
   }
 
-  // AES-256-CBC or XTEA-CBC
   else if(choice==='2' || choice==='3'){
     const pass = $('#exportPass').value || state.settings.encryption.passphrase;
     if(!pass){ toast('Passphrase required'); return; }
@@ -1365,15 +1381,15 @@ $('#confirmExport').onclick = async ()=>{
     const iv = state.settings.encryption.iv_b64
       ? b64d(state.settings.encryption.iv_b64)
       : (choice==='2'
-          ? crypto.getRandomValues(new Uint8Array(16)) // 16B IV for AES
-          : crypto.getRandomValues(new Uint8Array(8))); // 8B IV for XTEA
+          ? crypto.getRandomValues(new Uint8Array(16))
+          : crypto.getRandomValues(new Uint8Array(8)));
 
     const pt = encText(JSON.stringify(pkg));
 
     let ct;
-    if(choice==='2'){ // AES
+    if(choice==='2'){
       ct = await aesEncrypt(pt, pass, salt, iv);
-    } else { // XTEA
+    } else {
       ct = await xteaEncrypt(pt, pass, salt, iv);
     }
 
@@ -1389,13 +1405,11 @@ $('#confirmExport').onclick = async ()=>{
     toast('Saved encrypted package');
   }
 
-  // RSA Hybrid
   else if(choice==='4'){
     const pubPem = $('#exportPubPem').value || localStorage.getItem(RSA_PUB);
     if(!pubPem){ toast('No public key'); return; }
     const pubKey = await importPubKey(pubPem);
 
-    // generate random AES key
     const aesKeyRaw = crypto.getRandomValues(new Uint8Array(32));
     const aesKey = await crypto.subtle.importKey('raw', aesKeyRaw, 'AES-CBC', false, ['encrypt']);
     const iv = crypto.getRandomValues(new Uint8Array(16));
